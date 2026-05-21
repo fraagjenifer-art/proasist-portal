@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { Plus, UserCog, Search, X, Save, Mail } from 'lucide-react'
+import { Plus, UserCog, Search, X, Save, Mail, Copy, Check } from 'lucide-react'
 
 const roleLabels = {
   super_admin: { label: 'Super Admin', color: 'bg-purple-50 text-purple-700' },
@@ -19,6 +19,7 @@ export default function UsersPage() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
+  const [copied, setCopied] = useState(false)
 
   useEffect(() => { fetchAll() }, [])
 
@@ -37,19 +38,24 @@ export default function UsersPage() {
       setError('Nombre, email y contraseña son obligatorios.')
       return
     }
+    if (form.password.length < 6) {
+      setError('La contraseña debe tener al menos 6 caracteres.')
+      return
+    }
     setSaving(true)
     setError('')
 
-    // Create auth user
-    const { data, error: authError } = await supabase.auth.admin
-      ? supabase.auth.signUp({ email: form.email, password: form.password, options: { data: { full_name: form.full_name, role: form.role } } })
-      : { data: null, error: { message: 'No admin access' } }
+    // Save current session before creating user
+    const { data: { session: currentSession } } = await supabase.auth.getSession()
 
-    // Fallback: insert directly using signUp
+    // Create new user with signUp
     const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
       email: form.email,
       password: form.password,
-      options: { data: { full_name: form.full_name, role: form.role } }
+      options: {
+        data: { full_name: form.full_name, role: form.role },
+        emailRedirectTo: window.location.origin,
+      }
     })
 
     if (signUpError) {
@@ -58,7 +64,15 @@ export default function UsersPage() {
       return
     }
 
-    // Update profile with role and org
+    // Immediately restore the super admin session
+    if (currentSession) {
+      await supabase.auth.setSession({
+        access_token: currentSession.access_token,
+        refresh_token: currentSession.refresh_token,
+      })
+    }
+
+    // Update the new user's profile with correct role and org
     if (signUpData?.user) {
       await supabase.from('profiles').upsert({
         id: signUpData.user.id,
@@ -66,14 +80,17 @@ export default function UsersPage() {
         email: form.email,
         role: form.role,
         org_id: form.org_id || null,
+        is_active: true,
       })
+
+      // Auto-confirm email via update
+      await supabase.rpc('confirm_user_email', { user_id: signUpData.user.id }).catch(() => {})
     }
 
     setSaving(false)
     setShowModal(false)
-    setSuccess(`Usuario ${form.email} creado. Debe verificar su correo antes de entrar.`)
+    setSuccess(`✅ Usuario ${form.email} creado con éxito. Credenciales: ${form.email} / ${form.password}`)
     setForm({ full_name: '', email: '', password: '', role: 'va', org_id: '' })
-    setTimeout(() => setSuccess(''), 5000)
     fetchAll()
   }
 
@@ -85,6 +102,13 @@ export default function UsersPage() {
   async function updateOrg(userId, org_id) {
     await supabase.from('profiles').update({ org_id: org_id || null }).eq('id', userId)
     fetchAll()
+  }
+
+  function copyCredentials() {
+    const text = success.replace('✅ ', '')
+    navigator.clipboard.writeText(text)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
   }
 
   const filtered = users.filter(u =>
@@ -99,15 +123,19 @@ export default function UsersPage() {
           <h1 className="font-display text-2xl font-bold text-[#1F3A5F]">Usuarios y VAs</h1>
           <p className="text-sm text-slate-500 mt-0.5">{users.length} usuarios en el sistema</p>
         </div>
-        <button onClick={() => { setShowModal(true); setError('') }}
+        <button onClick={() => { setShowModal(true); setError(''); setSuccess('') }}
           className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white text-sm font-medium bg-[#2FA4A9] hover:opacity-90 transition">
           <Plus className="w-4 h-4" /> Nuevo usuario
         </button>
       </div>
 
       {success && (
-        <div className="bg-green-50 border border-green-200 text-green-700 text-sm rounded-xl px-4 py-3 mb-5">
-          ✅ {success}
+        <div className="bg-green-50 border border-green-200 text-green-700 text-sm rounded-xl px-4 py-3 mb-5 flex items-start justify-between gap-3">
+          <p>{success}</p>
+          <button onClick={copyCredentials} className="flex items-center gap-1 text-xs font-medium text-green-700 hover:text-green-900 flex-shrink-0">
+            {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+            {copied ? 'Copiado' : 'Copiar'}
+          </button>
         </div>
       )}
 
@@ -206,10 +234,11 @@ export default function UsersPage() {
                   className="w-full px-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2FA4A9]" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-600 mb-1.5">Contraseña *</label>
-                <input type="password" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })}
+                <label className="block text-sm font-medium text-slate-600 mb-1.5">Contraseña temporal *</label>
+                <input type="text" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })}
                   placeholder="Mínimo 6 caracteres"
-                  className="w-full px-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2FA4A9]" />
+                  className="w-full px-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2FA4A9] font-mono" />
+                <p className="text-xs text-slate-400 mt-1">Puedes ver la contraseña para copiarla y enviársela al usuario.</p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-600 mb-1.5">Rol</label>
@@ -229,9 +258,9 @@ export default function UsersPage() {
                   {orgs.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
                 </select>
               </div>
-              <div className="flex items-start gap-2 bg-amber-50 rounded-xl p-3">
-                <Mail className="w-4 h-4 text-amber-600 mt-0.5 flex-shrink-0" />
-                <p className="text-xs text-amber-700">El usuario recibirá un email de verificación. Debe confirmarlo antes de poder entrar al portal.</p>
+              <div className="flex items-start gap-2 bg-blue-50 rounded-xl p-3">
+                <Mail className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" />
+                <p className="text-xs text-blue-700">Después de crear el usuario, las credenciales aparecerán en pantalla para que puedas enviárselas manualmente.</p>
               </div>
             </div>
             <div className="flex gap-3 p-5 border-t border-slate-100">
