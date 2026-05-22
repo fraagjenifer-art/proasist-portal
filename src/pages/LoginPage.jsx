@@ -71,7 +71,7 @@ export default function LoginPage() {
         <div className="text-center mb-8">
           <div className="inline-flex flex-col items-center">
             <img
-              src="/logo.png"
+              src="https://raw.githubusercontent.com/Fraagjenifer-Art/proasist-portal/main/logo.png"
               alt="ProAssist Agency"
               className="h-24 w-auto object-contain drop-shadow-lg mb-3"
               onError={e => { e.target.style.display = 'none'; document.getElementById('fallback-logo').style.display = 'flex' }}
