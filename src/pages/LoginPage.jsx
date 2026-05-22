@@ -1,16 +1,38 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { Eye, EyeOff, Shield } from 'lucide-react'
+import { Eye, EyeOff } from 'lucide-react'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPass, setShowPass] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [progress, setProgress] = useState(0)
   const [error, setError] = useState('')
-  const { signIn, profile } = useAuth()
+  const [fadeIn, setFadeIn] = useState(false)
+  const { signIn } = useAuth()
   const navigate = useNavigate()
+
+  useEffect(() => {
+    setTimeout(() => setFadeIn(true), 50)
+  }, [])
+
+  useEffect(() => {
+    let interval
+    if (loading) {
+      setProgress(0)
+      interval = setInterval(() => {
+        setProgress(prev => {
+          if (prev >= 85) return prev
+          return prev + Math.random() * 12
+        })
+      }, 200)
+    } else {
+      setProgress(0)
+    }
+    return () => clearInterval(interval)
+  }, [loading])
 
   async function handleSubmit(e) {
     e.preventDefault()
@@ -18,23 +40,47 @@ export default function LoginPage() {
     setError('')
     const { error } = await signIn(email, password)
     if (error) {
-      setError('Correo o contraseña incorrectos.')
-      setLoading(false)
+      setProgress(100)
+      setTimeout(() => {
+        setError('Correo o contraseña incorrectos.')
+        setLoading(false)
+        setProgress(0)
+      }, 400)
     } else {
-      navigate('/dashboard')
+      setProgress(100)
+      setTimeout(() => navigate('/dashboard'), 400)
     }
   }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#1F3A5F] via-[#1a3352] to-[#0f2035] flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
+
+      {/* Loading bar top */}
+      <div className="fixed top-0 left-0 right-0 h-0.5 z-50">
+        <div
+          className="h-full bg-[#2FA4A9] transition-all duration-300 ease-out"
+          style={{ width: loading ? `${progress}%` : '0%', opacity: loading ? 1 : 0 }}
+        />
+      </div>
+
+      <div
+        className="w-full max-w-md transition-all duration-700 ease-out"
+        style={{ opacity: fadeIn ? 1 : 0, transform: fadeIn ? 'translateY(0)' : 'translateY(16px)' }}
+      >
         {/* Logo area */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-[#2FA4A9] mb-4 shadow-lg">
-            <Shield className="w-8 h-8 text-white" />
+          <div className="inline-flex flex-col items-center">
+            <img
+              src="/logo.png"
+              alt="ProAssist Agency"
+              className="h-24 w-auto object-contain drop-shadow-lg mb-3"
+              onError={e => { e.target.style.display = 'none'; document.getElementById('fallback-logo').style.display = 'flex' }}
+            />
+            <div id="fallback-logo" className="hidden w-20 h-20 rounded-2xl items-center justify-center bg-[#2FA4A9] mb-3 shadow-lg">
+              <span className="text-white font-display font-bold text-2xl">P</span>
+            </div>
           </div>
-          <h1 className="font-display text-3xl font-bold text-white tracking-tight">ProAssist</h1>
-          <p className="text-[#2FA4A9] text-sm mt-1 font-medium">Agency Portal</p>
+          <p className="text-[#2FA4A9] text-sm font-medium tracking-wide">Agency Portal</p>
         </div>
 
         {/* Card */}
@@ -42,7 +88,7 @@ export default function LoginPage() {
           <h2 className="font-display text-xl font-semibold text-[#1F3A5F] mb-6">Iniciar sesión</h2>
 
           {error && (
-            <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-3 mb-5">
+            <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl px-4 py-3 mb-5 animate-pulse">
               {error}
             </div>
           )}
@@ -56,7 +102,8 @@ export default function LoginPage() {
                 onChange={e => setEmail(e.target.value)}
                 required
                 placeholder="tu@email.com"
-                className="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#2FA4A9] focus:border-transparent transition"
+                disabled={loading}
+                className="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#2FA4A9] focus:border-transparent transition disabled:opacity-60"
               />
             </div>
             <div>
@@ -68,7 +115,8 @@ export default function LoginPage() {
                   onChange={e => setPassword(e.target.value)}
                   required
                   placeholder="••••••••"
-                  className="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#2FA4A9] focus:border-transparent transition pr-11"
+                  disabled={loading}
+                  className="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#2FA4A9] focus:border-transparent transition pr-11 disabled:opacity-60"
                 />
                 <button
                   type="button"
@@ -83,9 +131,18 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-[#1F3A5F] hover:bg-[#2FA4A9] text-white font-medium py-3 rounded-xl text-sm transition-colors duration-200 disabled:opacity-60 mt-2"
+              className="w-full text-white font-medium py-3 rounded-xl text-sm transition-all duration-200 disabled:opacity-70 mt-2 relative overflow-hidden"
+              style={{ background: '#1F3A5F' }}
             >
-              {loading ? 'Entrando...' : 'Entrar al portal'}
+              <span className={`transition-opacity duration-200 ${loading ? 'opacity-0' : 'opacity-100'}`}>
+                Entrar al portal
+              </span>
+              {loading && (
+                <span className="absolute inset-0 flex items-center justify-center gap-2">
+                  <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  Entrando...
+                </span>
+              )}
             </button>
           </form>
 
